@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 train/data/
 *.pt
+samples/
+android/**/build/
+android/.gradle/
+android/**/.gradle/
+android/local.properties
+android/.idea/
+*.iml
