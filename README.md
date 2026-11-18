@@ -46,7 +46,11 @@ python recognize.py --serve --port 8765
 curl --data-binary @사진.jpg http://127.0.0.1:8765/analyze
 ```
 
-## 모바일(Android / iOS)로 옮기는 방법
+## Android 앱
+
+`android/` 폴더에 오프라인 Android 라이브러리와 예제 앱이 있습니다. 사용법은 [android/README.md](android/README.md)를 보세요.
+
+## 모바일(iOS 등)로 옮기는 방법
 
 모델 두 개는 그대로 앱에 넣어 쓸 수 있습니다.
 - 차량 검출 `.tflite`: Android/iOS 모두 **MediaPipe Tasks ObjectDetector**에 그대로 넣으면 됩니다.
