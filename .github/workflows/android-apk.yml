@@ -43,7 +43,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="sample-apk-${{ github.run_number }}"
-          gh release create "$TAG" plate-engine-sample.apk \
+          cd android/sample/build/outputs/roborazzi && zip -q ../../../../../screenshots.zip *.png && cd -
+          gh release create "$TAG" plate-engine-sample.apk screenshots.zip \
             --repo "${{ github.repository }}" --target "${{ github.sha }}" --prerelease \
             --title "예제 앱 APK #${{ github.run_number }} (${GITHUB_REF_NAME})" \
             --notes "갤러리 사진으로 번호판·차종·색상을 기기 안에서 인식하는 예제 앱 (디버그 빌드). 커밋 ${{ github.sha }}"
