@@ -99,7 +99,7 @@ object VehicleColor {
         val sorted = v.copyOf(); sorted.sort()
         val p40 = MatUtil.percentile(sorted, 40.0)
         val hh = ArrayList<Float>(); var satCount = 0; var bgCount = 0
-        for (i in 0 until n) if (v[i] > p40) {
+        for (i in 0 until n) if (v[i] >= p40) {
             bgCount++
             val s = (b[i * 3 + 1].toInt() and 0xff) / 255.0
             if (s > 0.28) { satCount++; hh.add(((b[i * 3].toInt() and 0xff) * 2).toFloat()) }

@@ -73,7 +73,7 @@ def classify_plate_color(plate_bgr):
     hsv = cv2.cvtColor(plate_bgr, cv2.COLOR_BGR2HSV)
     h, s, v = hsv[..., 0].astype(int) * 2, hsv[..., 1] / 255, hsv[..., 2] / 255
     # 글자(어두운 부분) 제외, 바탕만
-    bg = v > np.percentile(v, 40)
+    bg = v >= np.percentile(v, 40)
     if bg.sum() < 20:
         return "unknown"
     hh, ss = h[bg], s[bg]

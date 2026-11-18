@@ -255,15 +255,19 @@ private fun InfoCard(v: VehicleUi) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
             InfoRow(Icons.Rounded.DirectionsCar, "차량종류", v.categoryLabel())
             Divider()
-            InfoRow(Icons.Rounded.Bolt, "전기차", if (v.electric) "전기차 (파란 번호판)" else "아니요",
+            if (v.plateNumber != null) {
+                InfoRow(Icons.Rounded.Badge, "번호판색", plateColorLabel(v.plateKind), swatch = plateSwatch(v.plateKind))
+                Divider()
+            }
+            InfoRow(Icons.Rounded.Bolt, "전기차", if (v.electric) "예 (파란 번호판)" else "아니요",
                 valueColor = if (v.electric) AppColors.Blue else AppColors.TextMain)
             Divider()
             InfoRow(Icons.Rounded.Palette, "차량색상", v.colorName ?: "확인 불가", swatch = swatchOf(v.colorName))
             Divider()
-            InfoRow(Icons.Rounded.Badge, "용도", v.usage ?: "확인 불가")
+            InfoRow(Icons.Rounded.Verified, "용도", v.usage ?: "확인 불가")
             if (v.confidence != null) {
                 Divider()
-                InfoRow(Icons.Rounded.Verified, "인식 신뢰도", "${(v.confidence * 100).toInt()}%")
+                InfoRow(Icons.Rounded.CheckCircle, "인식 신뢰도", "${(v.confidence * 100).toInt()}%")
             }
         }
     }
@@ -285,6 +289,14 @@ private fun InfoRow(icon: ImageVector, label: String, value: String, swatch: Col
         }
         Text(value, fontFamily = Pretendard, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = valueColor)
     }
+}
+
+private fun plateColorLabel(k: PlateKind) = when (k) {
+    PlateKind.EV -> "파란색"; PlateKind.YELLOW -> "노란색 (사업용)"; PlateKind.GREEN -> "녹색 (구형)"; PlateKind.WHITE -> "흰색"
+}
+
+private fun plateSwatch(k: PlateKind) = when (k) {
+    PlateKind.EV -> Color(0xFF4A98E6); PlateKind.YELLOW -> Color(0xFFF5C518); PlateKind.GREEN -> Color(0xFF2E8B57); PlateKind.WHITE -> Color.White
 }
 
 private fun swatchOf(name: String?): Color? = when (name) {
