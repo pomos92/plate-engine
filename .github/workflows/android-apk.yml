@@ -24,6 +24,14 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon :sample:assembleDebug
+      - name: Screenshot screens (design check)
+        working-directory: android
+        run: ./gradlew --no-daemon :sample:recordRoborazziDebug
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: android/sample/build/outputs/roborazzi/
       - name: Rename APK
         run: cp android/sample/build/outputs/apk/debug/sample-debug.apk plate-engine-sample.apk
       - uses: actions/upload-artifact@v4
