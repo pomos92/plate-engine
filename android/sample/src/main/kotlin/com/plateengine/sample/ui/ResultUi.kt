@@ -58,6 +58,7 @@ fun AnalyzeResult.toUi(image: Bitmap, elapsedMs: Long, now: Date = Date()): Resu
         compareByDescending<VehicleUi> { it.plateNumber != null }
             .thenByDescending { it.plateValid }
             .thenByDescending { it.confidence ?: 0.0 }
+            .thenByDescending { it.vehicleBox.width.toLong() * it.vehicleBox.height }  // 번호를 못 읽었으면 크게 찍힌 차부터
     )
     val fmt = SimpleDateFormat("yyyy.MM.dd. (E) HH:mm:ss", Locale.KOREA)
     return ResultUi(image, list, fmt.format(now), elapsedMs)

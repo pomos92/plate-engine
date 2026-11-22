@@ -28,7 +28,9 @@ object VehicleColor {
 
     private fun nameFromLab(L: Double, a: Double, b: Double, sceneL: Double): String {
         val chroma = hypot(a - 128, b - 128)
-        if (chroma < 14) {
+        val hue0 = (Math.toDegrees(kotlin.math.atan2(b - 128, a - 128)) + 360) % 360
+        // 회색·은색 차는 하늘이 비쳐 푸르스름하게 찍히기 쉬워서, 파란 쪽은 무채색 기준을 넉넉하게
+        if (chroma < 14 || (hue0 >= 220 && hue0 < 300 && chroma < 22)) {
             val r = L / max(sceneL, 60.0)
             return when {
                 L > 205 || r > 0.9 -> "흰색"; r > 0.65 -> "은색"; r > 0.45 -> "회색"; else -> "검정"

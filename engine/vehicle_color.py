@@ -21,7 +21,9 @@ def _body_mask(h, w, plate_box=None):
 def _name_from_lab(L, a, b, scene_L):
     """대표 색(Lab, OpenCV 0~255 스케일) -> 색 이름."""
     chroma = np.hypot(a - 128, b - 128)
-    if chroma < 14:
+    hue0 = (np.degrees(np.arctan2(b - 128, a - 128)) + 360) % 360
+    # 회색·은색 차는 하늘이 비쳐 푸르스름하게 찍히기 쉬워서, 파란 쪽은 무채색 기준을 넉넉하게
+    if chroma < 14 or (220 <= hue0 < 300 and chroma < 22):
         # 밝기는 장면 밝기(중앙값)에 대한 비율로 판단 -> 어두운 주차장에서도 흰 차를 흰색으로
         r = L / max(scene_L, 60)
         if L > 205 or r > 0.9: return "흰색"
