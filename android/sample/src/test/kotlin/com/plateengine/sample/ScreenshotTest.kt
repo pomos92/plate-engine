@@ -66,14 +66,12 @@ class ScreenshotTest {
 
     @OptIn(ExperimentalRoborazziApi::class)
     @Test fun editDialog() {
-        compose.mainClock.autoAdvance = false
         compose.setContent {
             PlateTheme {
                 ResultScreen(fakeResult(PlateKind.WHITE, "123가4561", false), onBack = {}, onSave = {})
                 EditPlateDialog("123가4561", onDismiss = {}, onConfirm = {})
             }
         }
-        compose.mainClock.advanceTimeBy(500)
         captureScreenRoboImage("build/outputs/roborazzi/7_edit_dialog.png")
     }
 
