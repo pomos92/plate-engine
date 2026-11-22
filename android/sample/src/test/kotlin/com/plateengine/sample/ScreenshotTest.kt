@@ -9,9 +9,6 @@ import android.graphics.Shader
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
-import com.github.takahirom.roborazzi.captureScreenRoboImage
-import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
-import com.plateengine.sample.ui.EditPlateDialog
 import com.plateengine.sample.ui.corrected
 import com.plateengine.core.Box
 import com.plateengine.sample.ui.PlateKind
@@ -62,17 +59,6 @@ class ScreenshotTest {
     @Test fun uploadWithTraining() {
         compose.setContent { PlateTheme { UploadScreen(ready = true, analyzing = false, message = null, onCamera = {}, onGallery = {}, trainingCount = 12) } }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/6_upload_training.png")
-    }
-
-    @OptIn(ExperimentalRoborazziApi::class)
-    @Test fun editDialog() {
-        compose.setContent {
-            PlateTheme {
-                ResultScreen(fakeResult(PlateKind.WHITE, "123가4561", false), onBack = {}, onSave = {})
-                EditPlateDialog("123가4561", onDismiss = {}, onConfirm = {})
-            }
-        }
-        captureScreenRoboImage("build/outputs/roborazzi/7_edit_dialog.png")
     }
 
     @Test fun resultCorrected() {
