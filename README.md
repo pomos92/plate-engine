@@ -46,6 +46,18 @@ python recognize.py --serve --port 8765
 curl --data-binary @사진.jpg http://127.0.0.1:8765/analyze
 ```
 
+## PC 폴더 자동정리 (Windows)
+
+감시 폴더(하위 폴더 포함)에 새 사진이 생기면 번호판을 읽어 `년월일시분초_번호.jpg`로 이름을 바꾸고
+백업 폴더의 같은 하위 폴더로 옮기는 창 프로그램입니다. 코드는 `pc/plate_watcher.py`, 사용법은 `pc/사용법.txt`.
+Windows용 실행 파일은 GitHub Actions(`.github/workflows/pc-watcher.yml`)가 빌드해서
+pre-release `pc-watcher-N`에 `PlateWatcher-win64.zip`으로 올립니다.
+
+```bash
+python pc/plate_watcher.py                          # 창으로 실행
+python pc/plate_watcher.py --watch 감시폴더 --backup 백업폴더   # 창 없이 실행
+```
+
 ## Android 앱
 
 `android/` 폴더에 오프라인 Android 라이브러리와 예제 앱이 있습니다. 사용법은 [android/README.md](android/README.md)를 보세요.
