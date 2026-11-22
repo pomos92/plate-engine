@@ -140,6 +140,11 @@ def render_plate():
             d = ImageDraw.Draw(img)
             d.rectangle([8, 20, 40, 90], fill=(30, 60, 140))
             left = 50
+        elif style == "new8" and random.random() < 0.5:
+            # 신형 번호판 왼쪽의 태극 홀로그램 + KOR
+            d.ellipse([10, 26, 34, 50], fill=(200, 40, 50)); d.pieslice([10, 26, 34, 50], 0, 180, fill=(30, 70, 160))
+            d.text((9, 60), "KOR", font=_font(13), fill=(60, 60, 70))
+            left = 46
         d.rectangle([2, 2, W - 3, H - 3], outline=(40, 40, 40), width=3)
         _draw_text_fit(d, (left, 10, W - 25, H - 10), label, 96, fg)
     else:
@@ -179,21 +184,47 @@ def augment(img):
             else:
                 xx = random.choice([random.randint(0, px), random.randint(W - px, W - 1)])
                 canvas[:, xx:xx + random.randint(2, 8)] = c
+    if random.random() < 0.45:
+        # 번호판 프레임(딜러 문구가 적힌 검은 테두리): 실제 사진에서 흔함
+        fc = random.randint(0, 50)
+        th = int(random.uniform(0.04, 0.08) * h)
+        canvas[py - th:py + h + th, px - th:px + w + th] = fc
+        bh = int(random.uniform(0.12, 0.22) * h)
+        if random.random() < 0.7:
+            canvas[py + h:py + h + bh, px - th:px + w + th] = fc
+            strip = Image.fromarray(np.zeros((bh, w, 3), np.uint8) + fc)
+            sd = ImageDraw.Draw(strip)
+            txt = random.choice(["Sheer Driving Pleasure · BMW Korea", "KIA MOTORS", "HYUNDAI", "Mercedes-Benz",
+                                 "RENAULT KOREA", "GENESIS", "AUDI KOREA", "VOLVO CARS", "SSANGYONG"])
+            sd.text((w * random.uniform(0.15, 0.3), bh * 0.1), txt, font=_font(max(8, int(bh * 0.7))),
+                    fill=tuple(random.randint(170, 240) for _ in range(3)))
+            canvas[py + h:py + h + bh, px:px + w] = np.array(strip, np.float32)
     canvas = np.clip(canvas, 0, 255).astype(np.uint8)
     canvas[py:py + h, px:px + w] = img
     img = canvas
-    j = 0.06
     src = np.float32([[px, py], [W - px, py], [W - px, H - py], [px, H - py]])
     dst = src + np.float32([[random.uniform(-0.025, 0.025) * w, random.uniform(-0.1, 0.1) * h] for _ in range(4)])
+    if random.random() < 0.6:  # 기울기 (번호판 찾기에서 대부분 바로잡지만 남는 오차 대비)
+        a = np.radians(random.uniform(-7, 7)); c, s_ = np.cos(a), np.sin(a)
+        ctr = dst.mean(0)
+        dst = (dst - ctr) @ np.float32([[c, s_], [-s_, c]]) + ctr
+    if random.random() < 0.4:  # 옆에서 찍은 원근: 한쪽 세로가 짧아짐
+        k = random.uniform(0, 0.22) * h
+        if random.random() < 0.5: dst[1, 1] += k; dst[2, 1] -= k
+        else: dst[0, 1] += k; dst[3, 1] -= k
+    if random.random() < 0.3:  # 기울어진 글자(전단 변형)
+        k = random.uniform(-0.25, 0.25) * h
+        dst[0, 0] += k; dst[1, 0] += k
     M = cv2.getPerspectiveTransform(src, dst)
     img = cv2.warpPerspective(img, M, (W, H), borderMode=cv2.BORDER_REPLICATE)
-    # 잘라내기: 대부분은 번호판 근처, 가끔 여유 많이 (글자는 자르지 않음)
+    # 잘라내기: 변형된 번호판 네 모서리를 기준으로. 대부분은 번호판 근처, 가끔 여유 많이 (글자는 자르지 않음)
+    bx0, by0 = dst.min(0); bx1, by1 = dst.max(0)
     loose = random.random() < 0.3
     mx, my = (0.9 * px, 0.9 * py) if loose else (0.3 * px, 0.35 * py)
-    x0 = int(px - random.uniform(0, mx) + random.uniform(0, 0.02 * w))
-    x1 = int(W - px + random.uniform(0, mx) - random.uniform(0, 0.02 * w))
-    y0 = int(py - random.uniform(0, my) + random.uniform(0, 0.06 * h))
-    y1 = int(H - py + random.uniform(0, my) - random.uniform(0, 0.06 * h))
+    x0 = int(bx0 - random.uniform(0, mx) + random.uniform(0, 0.02 * w))
+    x1 = int(bx1 + random.uniform(0, mx) - random.uniform(0, 0.02 * w))
+    y0 = int(by0 - random.uniform(0, my) + random.uniform(0, 0.06 * h))
+    y1 = int(by1 + random.uniform(0, my) - random.uniform(0, 0.06 * h))
     img = img[max(0, y0):min(H, y1), max(0, x0):min(W, x1)]
     # 해상도 저하
     s = random.uniform(0.15, 1.0)

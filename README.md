@@ -46,7 +46,11 @@ python recognize.py --serve --port 8765
 curl --data-binary @사진.jpg http://127.0.0.1:8765/analyze
 ```
 
-## 모바일(Android / iOS)로 옮기는 방법
+## Android 앱
+
+`android/` 폴더에 오프라인 Android 라이브러리와 예제 앱이 있습니다. 사용법은 [android/README.md](android/README.md)를 보세요.
+
+## 모바일(iOS 등)로 옮기는 방법
 
 모델 두 개는 그대로 앱에 넣어 쓸 수 있습니다.
 - 차량 검출 `.tflite`: Android/iOS 모두 **MediaPipe Tasks ObjectDetector**에 그대로 넣으면 됩니다.
@@ -58,7 +62,7 @@ curl --data-binary @사진.jpg http://127.0.0.1:8765/analyze
 ## 한계와 다음 단계
 
 - 번호판 OCR은 **합성 이미지로만 학습**했습니다. 실제 사진 정확도를 올리려면 실제 번호판 사진이 필요합니다.
-  `train/train_ocr.py --real 폴더`로 넣을 수 있습니다 (파일명이 정답, 예: `123가4567.jpg`).
+  아래 "실제 사진으로 계속 학습시키기"를 참고하세요 (파일명이 정답, 예: `123가4567.jpg`).
   AI Hub의 공개 차량/번호판 데이터(무료, 회원가입 필요)를 쓰면 좋습니다.
 - **경차**는 번호판에 표시가 없어 지금은 차량 박스 비율로만 약하게 추정합니다 (`compact_guess`).
   정확히 하려면 차종(모델명) 분류 모델 학습이 필요합니다.
@@ -73,15 +77,42 @@ python train/gen_dataset.py 4000 train/data/val.npz 999
 python train/train_ocr.py --epochs 10 --data train/data/train.npz --val train/data/val.npz
 ```
 
+## 실제 사진으로 계속 학습시키기
+
+**1) 앱에서 모으기**: 결과 화면의 "번호가 틀렸나요? 고치기"로 바른 번호를 넣으면 번호판 사진이 휴대폰 안에만 저장됩니다
+(첫 화면에 "학습용 사진 N장 모음" 표시). "내보내기"를 누르면 `plate_training_날짜.zip`을 드라이브·메일 등으로 공유할 수 있습니다.
+zip 안의 `plates/`는 번호판만 잘라낸 사진, `vehicles/`는 차 전체 사진이고, 파일명이 정답입니다.
+
+**2) AI Hub 데이터 넣기**: 받은 데이터 압축을 풀고 번호판 부분만 잘라냅니다.
+
+```bash
+python train/aihub_import.py AI허브_압축푼_폴더 train/data/aihub_plates
+```
+
+**3) 지금 모델 정확도 확인 → 이어서 학습 → 다시 확인**
+
+```bash
+python train/eval_real.py train/data/aihub_plates plate_training_20261122.zip
+python train/train_ocr.py --resume --epochs 4 --data train/data/train.npz --val train/data/val.npz \
+       --real train/data/aihub_plates plate_training_20261122.zip
+python train/eval_real.py train/data/aihub_plates --show-wrong
+```
+
+실제 사진의 10%는 학습에 쓰지 않고 `real_holdout_acc`(실제 사진 정확도) 확인용으로 남겨 둡니다.
+학습이 끝나면 `models/plate_ocr.onnx`만 바뀌고, 앱은 새로 빌드하면 그대로 반영됩니다.
+
 ## 라이선스 메모
 
 - EfficientDet-Lite 모델: Apache-2.0 (Google MediaPipe)
 - 학습용 글꼴: Pretendard (SIL OFL 1.1), 나눔고딕 (SIL OFL 1.1, koreanize-matplotlib 패키지 경유)
 
-## 현재 성능 (합성 기준)
+## 현재 성능
 
-- 합성 번호판 검증셋 4,000장: 번호 전체 일치 99.9%
-- 실제 주차장 사진의 번호판 자리에 합성 번호판을 합성한 테스트(`tests/composite_test.py`) 48건:
-  번호 전체 일치 46건(96%), 번호판 색(흰/파랑/노랑) 48건 모두 일치
-- 처리 속도: 1920×1080 사진 한 장(차량 3대) 약 0.23초 (CPU 4코어)
-- **실제 번호판 사진으로는 아직 검증하지 못했습니다.** 실제 사진 몇 장을 주시면 바로 확인할 수 있습니다.
+- 합성 번호판 검증셋 4,000장(기울기·원근·번호판 테두리 포함): 번호 전체 일치 99.4%
+- 실제 주차장 사진에 합성 번호판을 넣은 테스트(`tests/composite_test.py`) 48건: 번호 전체 일치 47건(98%)
+- **실제 번호판 사진 9장**(사용자가 앱으로 찍은 사진, 비스듬한 각도 포함): 7장 정답.
+  이전 버전은 2장이었음. 틀린 2장은 화면 캡처에 앱이 그린 테두리가 번호판 글자와 겹친 사진.
+  `python tests/real_screens_test.py 사진폴더` (파일명 = 정답)
+- 비스듬한 번호판: 글자처럼 생긴 덩어리를 한 줄로 이어 찾고, 기울기를 바로잡아 읽음 (`char_group_candidates`)
+- Android(Kotlin) 엔진도 같은 사진에서 Python과 결과가 똑같음 (`tests/kotlin_parity_real.py`)
+- 처리 속도: 사진 한 장 약 0.2~0.5초 (PC CPU 4코어)

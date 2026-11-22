@@ -88,3 +88,112 @@ def find_plate_candidates(bgr, max_candidates=12):
         out.append((max(0, int((x0 - px) / scale)), max(0, int((y0 - py) / scale)),
                     min(W, int((x1 + px) / scale)), min(H, int((y1 + py) / scale))))
     return out
+
+
+# ---------------------------------------------------------------------------
+# 글자 모양으로 번호판 찾기: 비스듬히 찍힌 번호판도 찾을 수 있다.
+# 글자처럼 생긴 덩어리(세로로 긴 작은 덩어리)를 찾고, 크기가 비슷한 것끼리 한 줄로 이어지면 번호판 후보.
+
+def _char_blobs(gray):
+    """글자처럼 생긴 연결 요소들: [(x, y, w, h, cx, cy)]. 어두운 글자/밝은 글자 둘 다."""
+    H, W = gray.shape
+    bs = max(15, (min(H, W) // 20) | 1)
+    out = []
+    for inv in (cv2.THRESH_BINARY_INV, cv2.THRESH_BINARY):
+        b = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, inv, bs, 9)
+        n, _, st, cen = cv2.connectedComponentsWithStats(b, connectivity=8)
+        for i in range(1, n):
+            x, y, w, h, a = st[i]
+            if h < 9 or h > 0.4 * H or w < 2:
+                continue
+            r = w / h
+            if not (0.08 <= r <= 1.15):  # 숫자 1은 아주 가늘다
+                continue
+            fill = a / (w * h)
+            if not (0.12 <= fill <= 0.92):
+                continue
+            out.append((x, y, w, h, x + w / 2, y + h / 2, inv))
+    return out
+
+
+def _groups(blobs, min_n=4):
+    """크기가 비슷하고 한 줄(기울어도 됨)로 이어진 덩어리 묶음."""
+    n = len(blobs)
+    if n < min_n:
+        return []
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]; i = parent[i]
+        return i
+
+    order = sorted(range(n), key=lambda i: blobs[i][4])
+    for ii, i in enumerate(order):
+        xi, yi, wi, hi, cxi, cyi, pi = blobs[i]
+        for j in order[ii + 1:]:
+            xj, yj, wj, hj, cxj, cyj, pj = blobs[j]
+            dx = cxj - cxi
+            if dx > 2.4 * max(hi, hj):  # 한글은 여러 조각으로 갈라져서 사이가 벌어질 수 있다
+                break
+            if pi != pj or dx <= 0.15 * min(hi, hj):
+                continue
+            if max(hi, hj) / min(hi, hj) > 1.35:
+                continue
+            if abs(cyj - cyi) > 0.25 * max(hi, hj) + 0.45 * dx:  # 약 25도까지 기울기 허용
+                continue
+            parent[find(j)] = find(i)
+    groups = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    return [[blobs[i] for i in g] for g in groups.values() if len(g) >= min_n]
+
+
+def char_group_candidates(bgr, max_candidates=8):
+    """[(x0, y0, x1, y1, 각도deg)] 원본 좌표. 각도는 글자 줄의 기울기."""
+    H, W = bgr.shape[:2]
+    scale = 1000 / max(H, W) if max(H, W) > 1000 else 1.0
+    img = cv2.resize(bgr, (int(W * scale), int(H * scale)), interpolation=cv2.INTER_AREA) if scale != 1 else bgr
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.createCLAHE(2.0, (8, 8)).apply(gray)
+    res = []
+    for g in _groups(_char_blobs(gray)):
+        g = sorted(g, key=lambda b: b[4])
+        cx = np.array([b[4] for b in g]); cy = np.array([b[5] for b in g])
+        hs = np.array([b[3] for b in g]); hm = float(np.median(hs))
+        span = cx[-1] - cx[0]
+        if span < 2.0 * hm or span > 12 * hm:   # 번호판 글자 줄 길이: 글자 높이의 2~12배
+            continue
+        slope = np.polyfit(cx, cy, 1)[0] if len(g) >= 2 else 0.0
+        ang = float(np.degrees(np.arctan(slope)))
+        if abs(ang) > 28:
+            continue
+        x0 = min(b[0] for b in g); x1 = max(b[0] + b[2] for b in g)
+        y0 = min(b[1] for b in g); y1 = max(b[1] + b[3] for b in g)
+        score = len(g) - 2 * float(np.std(hs) / hm)
+        res.append((score, (x0 - 0.5 * hm, y0 - 0.35 * hm, x1 + 0.5 * hm, y1 + 0.35 * hm), ang, hm))
+    res.sort(key=lambda r: -r[0])
+    out = []
+    for _, (x0, y0, x1, y1), ang, hm in res[:max_candidates]:
+        out.append((max(0, int(x0 / scale)), max(0, int(y0 / scale)), min(W, int(x1 / scale)), min(H, int(y1 / scale)),
+                    ang, hm / scale))
+    return out
+
+
+def deskew(crop, angle=None):
+    """번호판 조각을 글자 줄이 수평이 되도록 돌린다. angle(도)을 모르면 조각 안의 글자로 추정."""
+    if crop is None or crop.size == 0:
+        return crop
+    if angle is None:
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        gs = _groups(_char_blobs(gray), min_n=3)
+        if not gs:
+            return crop
+        g = max(gs, key=len)
+        cx = np.array([b[4] for b in g]); cy = np.array([b[5] for b in g])
+        angle = float(np.degrees(np.arctan(np.polyfit(cx, cy, 1)[0])))
+    if abs(angle) < 2:
+        return crop
+    h, w = crop.shape[:2]
+    M = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
+    return cv2.warpAffine(crop, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)

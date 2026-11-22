@@ -1,0 +1,3 @@
+-keep class ai.onnxruntime.** { *; }
+-keep class org.opencv.** { *; }
+-keep class com.google.mediapipe.** { *; }
