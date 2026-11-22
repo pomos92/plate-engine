@@ -38,6 +38,12 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.TextStyle
+import com.plateengine.core.PlateRules
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,9 +78,12 @@ fun ResultScreen(
     result: ResultUi,
     onBack: () -> Unit,
     onSave: (Bitmap) -> Unit,
+    /** 사용자가 번호를 고쳤을 때 (차량 순번, 고친 번호). 학습용 사진으로 저장된다. */
+    onCorrect: (Int, String) -> Unit = { _, _ -> },
 ) {
     var selected by remember { mutableIntStateOf(0) }
     var showOriginal by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
     val vehicle = result.vehicles.getOrNull(selected)
     val annotated = remember(result) { annotate(result.image, result.vehicles) }
 
@@ -127,7 +136,7 @@ fun ResultScreen(
 
             Column(Modifier.padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(8.dp))
-                PlateCard(vehicle)
+                PlateCard(vehicle, onEdit = { editing = true })
                 Spacer(Modifier.height(16.dp))
                 if (vehicle != null) InfoCard(vehicle)
                 Spacer(Modifier.height(12.dp))
@@ -156,6 +165,12 @@ fun ResultScreen(
         }
     }
 
+    if (editing && vehicle != null) {
+        EditPlateDialog(vehicle.plateNumber ?: "", onDismiss = { editing = false }) {
+            editing = false; onCorrect(selected, it)
+        }
+    }
+
     if (showOriginal) {
         Dialog(onDismissRequest = { showOriginal = false }) {
             Image(annotated.asImageBitmap(), "원본 이미지", contentScale = ContentScale.Fit,
@@ -165,7 +180,7 @@ fun ResultScreen(
 }
 
 @Composable
-private fun PlateCard(v: VehicleUi?) {
+private fun PlateCard(v: VehicleUi?, onEdit: () -> Unit) {
     val found = v?.plateNumber != null
     Column(
         Modifier.fillMaxWidth().shadow(10.dp, RoundedCornerShape(24.dp), spotColor = AppColors.Blue)
@@ -195,6 +210,24 @@ private fun PlateCard(v: VehicleUi?) {
         } else {
             Text("번호판이 정면으로 크게 보이도록 다시 찍어 주세요", fontFamily = Pretendard, fontWeight = FontWeight.SemiBold,
                 fontSize = 15.sp, color = AppColors.TextSub, textAlign = TextAlign.Center)
+        }
+        if (v != null) {
+            Spacer(Modifier.height(14.dp))
+            if (v.userCorrected) {
+                Text("고친 번호를 학습용 사진으로 저장했어요", fontFamily = Pretendard, fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp, color = AppColors.Ok, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(6.dp))
+            }
+            Row(
+                Modifier.clip(RoundedCornerShape(20.dp)).border(1.dp, AppColors.Line, RoundedCornerShape(20.dp))
+                    .background(Color.White).clickable(onClick = onEdit).padding(horizontal = 16.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Edit, null, tint = AppColors.Blue, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (found) "번호가 틀렸나요? 고치기" else "번호 직접 입력하기", fontFamily = Pretendard,
+                    fontWeight = FontWeight.Bold, fontSize = 15.sp, color = AppColors.Blue)
+            }
         }
     }
 }
@@ -355,4 +388,38 @@ fun heroCrop(img: Bitmap, v: VehicleUi?): Bitmap {
     val x0 = (cx - w / 2).coerceIn(0f, img.width - w).toInt()
     val y0 = (cy - h / 2).coerceIn(0f, img.height - h).toInt()
     return Bitmap.createBitmap(img, x0, y0, max(1, w.toInt()), max(1, h.toInt()))
+}
+
+/** 번호 고치기: 형식이 맞아야 저장할 수 있다. 저장하면 사진이 학습용으로 휴대폰에 모인다. */
+@Composable
+fun EditPlateDialog(initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    val parsed = PlateRules.parse(text.trim())
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("차량번호 고치기", fontFamily = Pretendard, fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column {
+                Text("사진 속 번호판에 적힌 대로 입력해 주세요. 이 사진은 인식 정확도를 높이는 학습용으로 휴대폰에만 저장돼요.",
+                    fontFamily = Pretendard, fontSize = 14.sp, color = AppColors.TextSub)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it.replace("\n", "") }, singleLine = true,
+                    textStyle = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 22.sp),
+                    placeholder = { Text("예: 123가4567") }, isError = text.isNotBlank() && parsed == null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(if (text.isNotBlank() && parsed == null) "형식이 맞지 않아요 (예: 123가4567, 서울12가3456)" else " ",
+                    fontFamily = Pretendard, fontSize = 13.sp, color = AppColors.Warn)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { parsed?.let { onConfirm(it.number) } }, enabled = parsed != null) {
+                Text("저장", fontFamily = Pretendard, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소", fontFamily = Pretendard) } },
+        containerColor = Color.White,
+    )
 }

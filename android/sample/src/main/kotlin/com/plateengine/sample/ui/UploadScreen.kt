@@ -24,6 +24,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.WifiOff
+import androidx.compose.material.icons.rounded.School
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -52,7 +59,13 @@ fun UploadScreen(
     message: String?,
     onCamera: () -> Unit,
     onGallery: () -> Unit,
+    /** 번호를 고쳐서 모아 둔 학습용 사진 수 */
+    trainingCount: Int = 0,
+    onExportTraining: () -> Unit = {},
+    onClearTraining: () -> Unit = {},
 ) {
+    var trainingMenu by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
     Box(
         Modifier
             .fillMaxSize()
@@ -94,6 +107,20 @@ fun UploadScreen(
                 Text("인터넷 없이 휴대폰 안에서 분석해요", fontFamily = Pretendard, fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp, color = AppColors.TextSub)
             }
+            if (trainingCount > 0) {
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White)
+                        .border(1.dp, AppColors.Line, RoundedCornerShape(20.dp))
+                        .clickable { trainingMenu = true }.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.School, null, tint = AppColors.Blue, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("학습용 사진 ${trainingCount}장 모음 · 내보내기", fontFamily = Pretendard, fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp, color = AppColors.Blue)
+                }
+            }
             if (!ready) {
                 Spacer(Modifier.height(10.dp))
                 Text("인식 엔진 준비 중…", fontFamily = Pretendard, fontSize = 13.sp, color = AppColors.Blue)
@@ -103,6 +130,42 @@ fun UploadScreen(
                 Text(message, fontFamily = Pretendard, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
                     color = AppColors.Warn, textAlign = TextAlign.Center)
             }
+        }
+
+        if (trainingMenu) {
+            AlertDialog(
+                onDismissRequest = { trainingMenu = false },
+                title = { Text("학습용 사진 ${trainingCount}장", fontFamily = Pretendard, fontWeight = FontWeight.ExtraBold) },
+                text = {
+                    Text("번호를 고친 사진이 휴대폰 안에만 모여 있어요. 압축 파일로 내보내서 전달해 주시면 이 사진들로 인식 엔진을 다시 학습시킬 수 있어요.",
+                        fontFamily = Pretendard, fontSize = 15.sp, color = AppColors.TextSub)
+                },
+                confirmButton = {
+                    TextButton(onClick = { trainingMenu = false; onExportTraining() }) {
+                        Text("내보내기", fontFamily = Pretendard, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { trainingMenu = false; confirmClear = true }) {
+                        Text("모두 지우기", fontFamily = Pretendard, color = AppColors.Warn)
+                    }
+                },
+                containerColor = Color.White,
+            )
+        }
+        if (confirmClear) {
+            AlertDialog(
+                onDismissRequest = { confirmClear = false },
+                title = { Text("모은 사진을 지울까요?", fontFamily = Pretendard, fontWeight = FontWeight.ExtraBold) },
+                text = { Text("지운 사진은 되돌릴 수 없어요. 내보내기를 먼저 했는지 확인해 주세요.", fontFamily = Pretendard, fontSize = 15.sp) },
+                confirmButton = {
+                    TextButton(onClick = { confirmClear = false; onClearTraining() }) {
+                        Text("지우기", fontFamily = Pretendard, fontWeight = FontWeight.Bold, color = AppColors.Warn)
+                    }
+                },
+                dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("취소", fontFamily = Pretendard) } },
+                containerColor = Color.White,
+            )
         }
 
         if (analyzing) {

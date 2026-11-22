@@ -62,7 +62,7 @@ curl --data-binary @사진.jpg http://127.0.0.1:8765/analyze
 ## 한계와 다음 단계
 
 - 번호판 OCR은 **합성 이미지로만 학습**했습니다. 실제 사진 정확도를 올리려면 실제 번호판 사진이 필요합니다.
-  `train/train_ocr.py --real 폴더`로 넣을 수 있습니다 (파일명이 정답, 예: `123가4567.jpg`).
+  아래 "실제 사진으로 계속 학습시키기"를 참고하세요 (파일명이 정답, 예: `123가4567.jpg`).
   AI Hub의 공개 차량/번호판 데이터(무료, 회원가입 필요)를 쓰면 좋습니다.
 - **경차**는 번호판에 표시가 없어 지금은 차량 박스 비율로만 약하게 추정합니다 (`compact_guess`).
   정확히 하려면 차종(모델명) 분류 모델 학습이 필요합니다.
@@ -76,6 +76,30 @@ python train/gen_dataset.py 120000 train/data/train.npz
 python train/gen_dataset.py 4000 train/data/val.npz 999
 python train/train_ocr.py --epochs 10 --data train/data/train.npz --val train/data/val.npz
 ```
+
+## 실제 사진으로 계속 학습시키기
+
+**1) 앱에서 모으기**: 결과 화면의 "번호가 틀렸나요? 고치기"로 바른 번호를 넣으면 번호판 사진이 휴대폰 안에만 저장됩니다
+(첫 화면에 "학습용 사진 N장 모음" 표시). "내보내기"를 누르면 `plate_training_날짜.zip`을 드라이브·메일 등으로 공유할 수 있습니다.
+zip 안의 `plates/`는 번호판만 잘라낸 사진, `vehicles/`는 차 전체 사진이고, 파일명이 정답입니다.
+
+**2) AI Hub 데이터 넣기**: 받은 데이터 압축을 풀고 번호판 부분만 잘라냅니다.
+
+```bash
+python train/aihub_import.py AI허브_압축푼_폴더 train/data/aihub_plates
+```
+
+**3) 지금 모델 정확도 확인 → 이어서 학습 → 다시 확인**
+
+```bash
+python train/eval_real.py train/data/aihub_plates plate_training_20261122.zip
+python train/train_ocr.py --resume --epochs 4 --data train/data/train.npz --val train/data/val.npz \
+       --real train/data/aihub_plates plate_training_20261122.zip
+python train/eval_real.py train/data/aihub_plates --show-wrong
+```
+
+실제 사진의 10%는 학습에 쓰지 않고 `real_holdout_acc`(실제 사진 정확도) 확인용으로 남겨 둡니다.
+학습이 끝나면 `models/plate_ocr.onnx`만 바뀌고, 앱은 새로 빌드하면 그대로 반영됩니다.
 
 ## 라이선스 메모
 

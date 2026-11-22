@@ -68,6 +68,28 @@ def greedy_decode(logits):
     return out
 
 
+def real_files(paths):
+    """폴더 / 앱에서 내보낸 zip(plates/ 폴더 사용) / aihub_import.py 결과 폴더에서 사진 경로를 모은다."""
+    import tempfile
+    import zipfile
+    out = []
+    for p in paths:
+        if p.lower().endswith(".zip"):
+            d = tempfile.mkdtemp(prefix="real_")
+            with zipfile.ZipFile(p) as z:
+                for info in z.infolist():  # 한글 파일명: 앱은 UTF-8로 저장
+                    if info.flag_bits & 0x800 == 0:
+                        try: info.filename = info.filename.encode("cp437").decode("utf-8")
+                        except UnicodeError: pass
+                    z.extract(info, d)
+            p = d
+        if os.path.isdir(os.path.join(p, "plates")):
+            p = os.path.join(p, "plates")
+        out += [f for f in glob.glob(os.path.join(p, "**", "*"), recursive=True)
+                if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--epochs", type=int, default=8)
@@ -75,7 +97,8 @@ def main():
     ap.add_argument("--val", default="train/data/val.npz")
     ap.add_argument("--bs", type=int, default=64)
     ap.add_argument("--lr", type=float, default=2e-3)
-    ap.add_argument("--real", default=None)
+    ap.add_argument("--real", nargs="*", default=None,
+                    help="실제 번호판 폴더 또는 앱에서 내보낸 zip (여러 개 가능, 파일명 = 정답)")
     ap.add_argument("--out", default="models/plate_ocr.onnx")
     ap.add_argument("--ckpt", default="train/plate_ocr.pt")
     ap.add_argument("--resume", action="store_true")
@@ -89,15 +112,22 @@ def main():
     d = np.load(a.data)
     X, L = d["X"], list(d["L"])
     if a.real:  # 실제 번호판 이미지 (파일명 = 정답) 를 3배 가중으로 추가
-        RX, RL = [], []
-        for f in glob.glob(os.path.join(a.real, "*")):
+        import zlib
+        RX, RL, HX, HL = [], [], [], []
+        for f in real_files(a.real):
             lab = os.path.splitext(os.path.basename(f))[0].split("_")[0]
-            img = cv2.imread(f)
+            img = cv2.imdecode(np.fromfile(f, np.uint8), cv2.IMREAD_COLOR)  # 한글 파일명 (Windows 포함)
             if img is not None and all(c in C2I for c in lab):
-                RX.append((prep_plate(img)[0] * 255).astype(np.uint8)); RL.append(lab)
+                x = (prep_plate(img)[0] * 255).astype(np.uint8)
+                # 10%는 학습에 쓰지 않고 '실제 사진 정확도' 확인용으로 남긴다 (파일명 기준이라 매번 같은 사진)
+                if zlib.crc32(os.path.basename(f).encode()) % 10 == 0:
+                    HX.append(x); HL.append(lab)
+                else:
+                    RX.append(x); RL.append(lab)
         if RX:
             X = np.concatenate([X] + [np.stack(RX)] * 3); L += RL * 3
-            print("real samples", len(RX))
+            print("real samples", len(RX), "real holdout", len(HX))
+    RVX = torch.from_numpy(np.stack(HX).astype(np.float32)[:, None] / 255) if a.real and HX else None
     v = np.load(a.val)
     VX = torch.from_numpy(v["X"].astype(np.float32)[:, None] / 255); VL = list(v["L"])
     steps_per_epoch = len(X) // a.bs
@@ -131,7 +161,12 @@ def main():
             for k in range(0, len(VX), 256):
                 pred += greedy_decode(model(VX[k:k + 256]))
         acc = np.mean([p == t for p, t in zip(pred, VL)])
-        print(f"== epoch {ep} val_plate_acc {acc:.4f}", flush=True)
+        msg = f"== epoch {ep} val_plate_acc {acc:.4f}"
+        if RVX is not None:
+            with torch.no_grad():
+                rp = greedy_decode(model(RVX))
+            msg += f" real_holdout_acc {np.mean([p == t for p, t in zip(rp, HL)]):.4f} (n={len(HL)})"
+        print(msg, flush=True)
         torch.save(model.state_dict(), a.ckpt)
 
     model.eval()

@@ -1,6 +1,7 @@
 package com.plateengine.sample
 
 import android.content.ContentValues
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -27,6 +28,7 @@ import com.plateengine.sample.ui.PlateTheme
 import com.plateengine.sample.ui.ResultScreen
 import com.plateengine.sample.ui.ResultUi
 import com.plateengine.sample.ui.UploadScreen
+import com.plateengine.sample.ui.corrected
 import com.plateengine.sample.ui.toUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,6 +43,8 @@ class MainActivity : ComponentActivity() {
     private var message by mutableStateOf<String?>(null)
     private var result by mutableStateOf<ResultUi?>(null)
     private var cameraUri: Uri? = null
+    private lateinit var training: TrainingStore
+    private var trainingCount by mutableStateOf(0)
 
     private val pickPhoto = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) analyze(uri)
@@ -53,6 +57,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        training = TrainingStore(applicationContext)
+        trainingCount = training.count()
         setContent {
             PlateTheme {
                 val r = result
@@ -61,10 +67,13 @@ class MainActivity : ComponentActivity() {
                         ready = ready, analyzing = analyzing, message = message,
                         onCamera = ::openCamera,
                         onGallery = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        trainingCount = trainingCount,
+                        onExportTraining = ::exportTraining,
+                        onClearTraining = { training.clear(); trainingCount = 0 },
                     )
                 } else {
                     BackHandler { result = null }
-                    ResultScreen(r, onBack = { result = null }, onSave = ::save)
+                    ResultScreen(r, onBack = { result = null }, onSave = ::save, onCorrect = ::correct)
                 }
             }
         }
@@ -138,6 +147,39 @@ class MainActivity : ComponentActivity() {
                 }.isSuccess
             }
             Toast.makeText(this@MainActivity, if (ok) "갤러리에 저장했어요" else "저장하지 못했어요", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** 사용자가 고친 번호: 화면을 바꾸고, 사진을 학습용으로 휴대폰에 저장. */
+    private fun correct(index: Int, number: String) {
+        val r = result ?: return
+        val v = r.vehicles.getOrNull(index) ?: return
+        result = r.copy(vehicles = r.vehicles.toMutableList().also { it[index] = v.corrected(number) })
+        lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { training.save(r.image, number, v.vehicleBox, v.plateBox); training.count() }
+            }
+            ok.onSuccess { trainingCount = it }
+            Toast.makeText(this@MainActivity,
+                if (ok.isSuccess) "학습용 사진으로 저장했어요 (${trainingCount}장)" else "저장하지 못했어요", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** 모은 사진을 zip으로 묶어 공유(드라이브, 카카오톡, 메일 등)로 내보낸다. */
+    private fun exportTraining() {
+        lifecycleScope.launch {
+            val zip = withContext(Dispatchers.IO) { runCatching { training.export() }.getOrNull() }
+            if (zip == null) {
+                Toast.makeText(this@MainActivity, "내보내지 못했어요", Toast.LENGTH_SHORT).show(); return@launch
+            }
+            val uri = FileProvider.getUriForFile(this@MainActivity, "$packageName.fileprovider", zip)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "번호판 학습용 사진 ${trainingCount}장")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, "학습용 사진 내보내기"))
         }
     }
 

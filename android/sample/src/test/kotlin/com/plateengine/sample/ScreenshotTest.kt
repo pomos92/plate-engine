@@ -9,6 +9,11 @@ import android.graphics.Shader
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import com.plateengine.sample.ui.corrected
 import com.plateengine.core.Box
 import com.plateengine.sample.ui.PlateKind
 import com.plateengine.sample.ui.PlateTheme
@@ -53,6 +58,26 @@ class ScreenshotTest {
     @Test fun resultNotFound() {
         compose.setContent { PlateTheme { ResultScreen(fakeResult(PlateKind.WHITE, null, false), onBack = {}, onSave = {}) } }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/5_result_not_found.png")
+    }
+
+    @Test fun uploadWithTraining() {
+        compose.setContent { PlateTheme { UploadScreen(ready = true, analyzing = false, message = null, onCamera = {}, onGallery = {}, trainingCount = 12) } }
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/6_upload_training.png")
+    }
+
+    @OptIn(ExperimentalRoborazziApi::class)
+    @Test fun editDialog() {
+        compose.setContent { PlateTheme { ResultScreen(fakeResult(PlateKind.WHITE, "123가4561", false), onBack = {}, onSave = {}) } }
+        compose.onNodeWithText("번호가 틀렸나요? 고치기").performClick()
+        compose.waitForIdle()
+        captureScreenRoboImage("build/outputs/roborazzi/7_edit_dialog.png")
+    }
+
+    @Test fun resultCorrected() {
+        val r = fakeResult(PlateKind.WHITE, "123가4561", false)
+        val fixed = r.copy(vehicles = listOf(r.vehicles[0].corrected("123가4567")) + r.vehicles.drop(1))
+        compose.setContent { PlateTheme { ResultScreen(fixed, onBack = {}, onSave = {}) } }
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/8_result_corrected.png")
     }
 
     private fun fakeResult(kind: PlateKind, number: String?, ev: Boolean): ResultUi {

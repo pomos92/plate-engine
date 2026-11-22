@@ -21,6 +21,7 @@ data class VehicleUi(
     val confidence: Double?,        // 번호 인식 신뢰도 0~1
     val vehicleBox: Box,
     val plateBox: Box?,
+    val userCorrected: Boolean = false,  // 사용자가 직접 고친(확인한) 번호
 )
 
 enum class PlateKind { WHITE, EV, YELLOW, GREEN }
@@ -70,4 +71,12 @@ fun VehicleUi.categoryLabel(): String = when (category) {
     "긴급" -> "긴급차"
     null -> "확인 불가"
     else -> category
+}
+
+/** 사용자가 고친 번호로 화면 정보를 다시 만든다 (차종·용도는 번호 규칙으로 다시 계산). */
+fun VehicleUi.corrected(number: String): VehicleUi {
+    val p = com.plateengine.core.PlateRules.parse(number)
+    val cat = when (p?.categoryByNumber) { null -> category; "화물" -> "트럭"; else -> p.categoryByNumber }
+    return copy(plateNumber = p?.number ?: number.replace(" ", ""), plateValid = p != null,
+        category = cat, usage = p?.usage ?: usage, confidence = 1.0, userCorrected = true)
 }
