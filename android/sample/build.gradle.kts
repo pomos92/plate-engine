@@ -23,7 +23,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    testOptions { unitTests.isIncludeAndroidResources = true }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        // Robolectric 이 안드로이드 런타임을 Maven Central 에서 받다가 요청 제한(429)에 걸려 실패하는 일이 있어 구글 미러에서 받는다
+        unitTests.all { it.systemProperty("robolectric.dependency.repo.url", "https://maven-central.storage-download.googleapis.com/maven2/") }
+    }
 }
 
 dependencies {
