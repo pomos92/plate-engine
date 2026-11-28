@@ -17,6 +17,10 @@ import com.plateengine.sample.ui.ResultScreen
 import com.plateengine.sample.ui.ResultUi
 import com.plateengine.sample.ui.UploadScreen
 import com.plateengine.sample.ui.VehicleUi
+import com.plateengine.sample.ui.WatchScreen
+import com.plateengine.sample.watcher.WatchLog
+import com.plateengine.sample.watcher.WatchSettings
+import com.plateengine.sample.watcher.WatchState
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -66,6 +70,45 @@ class ScreenshotTest {
         val fixed = r.copy(vehicles = listOf(r.vehicles[0].corrected("123가4567")) + r.vehicles.drop(1))
         compose.setContent { PlateTheme { ResultScreen(fixed, onBack = {}, onSave = {}) } }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/8_result_corrected.png")
+    }
+
+    @Test fun uploadWatching() {
+        compose.setContent { PlateTheme { UploadScreen(ready = true, analyzing = false, message = null, onCamera = {}, onGallery = {}, watching = true) } }
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/9_upload_watching.png")
+    }
+
+    @Test fun watchSetup() {
+        compose.setContent {
+            PlateTheme {
+                WatchScreen(
+                    settings = WatchSettings(), watchLabel = "", backupLabel = "", running = false, status = "",
+                    counts = WatchState.Counts(), logs = emptyList(), error = null,
+                    onBack = {}, onPickWatch = {}, onPickBackup = {}, onChange = {}, onStart = {}, onStop = {},
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/10_watch_setup.png")
+    }
+
+    @Test fun watchRunning() {
+        val now = 1_795_900_000_000L
+        val logs = listOf(
+            WatchLog(now, "1층/A구역/IMG_0012.jpg", "1층/A구역/20261128235101_67너7570.jpg", "67너7570"),
+            WatchLog(now - 9000, "1층/A구역/IMG_0011.jpg", "1층/A구역/IMG_0011.jpg", null),
+            WatchLog(now - 30000, "2층/IMG_0010.jpg", "2층/20261128234930_123가4567.jpg", "123가4567"),
+        )
+        compose.setContent {
+            PlateTheme {
+                WatchScreen(
+                    settings = WatchSettings(watchUri = android.net.Uri.parse("content://x/tree/primary%3ADCIM%2FCamera"),
+                        backupUri = android.net.Uri.parse("content://x/tree/primary%3APictures%2F백업")),
+                    watchLabel = "내장 메모리/DCIM/Camera", backupLabel = "내장 메모리/Pictures/백업", running = true,
+                    status = "새 사진을 기다리는 중", counts = WatchState.Counts(read = 2, unread = 1), logs = logs, error = null,
+                    onBack = {}, onPickWatch = {}, onPickBackup = {}, onChange = {}, onStart = {}, onStop = {},
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/11_watch_running.png")
     }
 
     private fun fakeResult(kind: PlateKind, number: String?, ev: Boolean): ResultUi {

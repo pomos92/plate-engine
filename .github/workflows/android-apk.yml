@@ -2,7 +2,7 @@ name: Android 예제 앱 APK
 
 on:
   push:
-    branches: [main, android-sdk]
+    branches: [main, android-sdk, "claude/project-thread-3e7iw8"]
     paths: ["android/**", "models/**", ".github/workflows/android-apk.yml"]
   workflow_dispatch:
 
@@ -47,4 +47,4 @@ jobs:
           gh release create "$TAG" plate-engine-sample.apk screenshots.zip \
             --repo "${{ github.repository }}" --target "${{ github.sha }}" --prerelease \
             --title "예제 앱 APK #${{ github.run_number }} (${GITHUB_REF_NAME})" \
-            --notes "갤러리 사진으로 번호판·차종·색상을 기기 안에서 인식하는 예제 앱 (디버그 빌드). 커밋 ${{ github.sha }}"
+            --notes "폴더 자동정리 + 갤러리 사진으로 번호판·차종·색상을 기기 안에서 인식하는 예제 앱 (디버그 빌드). 커밋 ${{ github.sha }}"

@@ -19,9 +19,13 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.DriveFileMove
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material.icons.rounded.School
@@ -63,6 +67,10 @@ fun UploadScreen(
     trainingCount: Int = 0,
     onExportTraining: () -> Unit = {},
     onClearTraining: () -> Unit = {},
+    /** 폴더 자동정리 화면 열기 (PC 버전과 같은 기능) */
+    onFolderWatch: () -> Unit = {},
+    /** 폴더 자동정리가 지금 돌고 있는지 */
+    watching: Boolean = false,
 ) {
     var trainingMenu by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
@@ -72,7 +80,7 @@ fun UploadScreen(
             .background(Brush.verticalGradient(listOf(Color(0xFFE8F0FF), AppColors.Bg, Color.White)))
     ) {
         Column(
-            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(28.dp))
@@ -106,6 +114,25 @@ fun UploadScreen(
                 Spacer(Modifier.width(6.dp))
                 Text("인터넷 없이 휴대폰 안에서 분석해요", fontFamily = Pretendard, fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp, color = AppColors.TextSub)
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Color.White)
+                    .border(1.dp, AppColors.Line, RoundedCornerShape(22.dp))
+                    .clickable(onClick = onFolderWatch).padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)).background(Color(0xFFE8F0FF)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.DriveFileMove, null, tint = AppColors.Blue, modifier = Modifier.size(24.dp))
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("폴더 자동정리", fontFamily = Pretendard, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = AppColors.Navy)
+                    Text(if (watching) "감시 중 · 새 사진을 이름 바꿔 백업 폴더로" else "새 사진을 번호로 이름 바꿔 백업 폴더로 옮겨요",
+                        fontFamily = Pretendard, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                        color = if (watching) AppColors.Ok else AppColors.TextSub)
+                }
+                Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = AppColors.TextSub)
             }
             if (trainingCount > 0) {
                 Spacer(Modifier.height(14.dp))

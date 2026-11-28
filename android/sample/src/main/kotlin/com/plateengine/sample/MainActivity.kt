@@ -1,10 +1,10 @@
 package com.plateengine.sample
 
+import android.Manifest
 import android.content.ContentValues
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -17,17 +17,23 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.lifecycleScope
 import com.plateengine.PlateEngine
 import com.plateengine.sample.ui.PlateTheme
 import com.plateengine.sample.ui.ResultScreen
 import com.plateengine.sample.ui.ResultUi
 import com.plateengine.sample.ui.UploadScreen
+import com.plateengine.sample.ui.WatchScreen
+import com.plateengine.sample.watcher.Saf
+import com.plateengine.sample.watcher.WatchService
+import com.plateengine.sample.watcher.WatchSettings
+import com.plateengine.sample.watcher.WatchState
 import com.plateengine.sample.ui.corrected
 import com.plateengine.sample.ui.toUi
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +51,16 @@ class MainActivity : ComponentActivity() {
     private var cameraUri: Uri? = null
     private lateinit var training: TrainingStore
     private var trainingCount by mutableStateOf(0)
+    private var showWatch by mutableStateOf(false)
+    private var watchSettings by mutableStateOf(WatchSettings())
+    private var watchError by mutableStateOf<String?>(null)
+    /** 폴더 선택 창을 감시 폴더용으로 열었는지(아니면 백업 폴더용) */
+    private var pickingWatch = true
+
+    private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) onFolderPicked(uri)
+    }
+    private val askNotify = registerForActivityResult(ActivityResultContracts.RequestPermission()) { startWatch(force = true) }
 
     private val pickPhoto = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) analyze(uri)
@@ -59,10 +75,30 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         training = TrainingStore(applicationContext)
         trainingCount = training.count()
+        watchSettings = WatchSettings.load(this)
+        showWatch = intent?.getBooleanExtra(EXTRA_OPEN_WATCH, false) == true
         setContent {
             PlateTheme {
                 val r = result
-                if (r == null) {
+                val watching by WatchState.running.collectAsState()
+                if (showWatch) {
+                    BackHandler { showWatch = false }
+                    val status by WatchState.status.collectAsState()
+                    val counts by WatchState.counts.collectAsState()
+                    val logs by WatchState.logs.collectAsState()
+                    WatchScreen(
+                        settings = watchSettings,
+                        watchLabel = Saf.label(watchSettings.watchUri),
+                        backupLabel = Saf.label(watchSettings.backupUri),
+                        running = watching, status = status, counts = counts, logs = logs, error = watchError,
+                        onBack = { showWatch = false },
+                        onPickWatch = { pickingWatch = true; pickFolder.launch(watchSettings.watchUri) },
+                        onPickBackup = { pickingWatch = false; pickFolder.launch(watchSettings.backupUri) },
+                        onChange = { watchSettings = it; it.save(this) },
+                        onStart = { startWatch() },
+                        onStop = { WatchService.stop(this) },
+                    )
+                } else if (r == null) {
                     UploadScreen(
                         ready = ready, analyzing = analyzing, message = message,
                         onCamera = ::openCamera,
@@ -70,6 +106,8 @@ class MainActivity : ComponentActivity() {
                         trainingCount = trainingCount,
                         onExportTraining = ::exportTraining,
                         onClearTraining = { training.clear(); trainingCount = 0 },
+                        onFolderWatch = { showWatch = true },
+                        watching = watching,
                     )
                 } else {
                     BackHandler { result = null }
@@ -81,6 +119,46 @@ class MainActivity : ComponentActivity() {
             engine = withContext(Dispatchers.Default) { PlateEngine(applicationContext) }
             ready = true
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_WATCH, false)) { result = null; showWatch = true }
+    }
+
+    private fun onFolderPicked(uri: Uri) {
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { contentResolver.takePersistableUriPermission(uri, flags) }
+        val old = if (pickingWatch) watchSettings.watchUri else watchSettings.backupUri
+        val next = if (pickingWatch) watchSettings.copy(watchUri = uri) else watchSettings.copy(backupUri = uri)
+        // 다른 쪽에서 쓰지 않는 이전 폴더 권한은 돌려준다
+        if (old != null && old != uri && old != next.watchUri && old != next.backupUri) {
+            runCatching { contentResolver.releasePersistableUriPermission(old, flags) }
+        }
+        watchSettings = next; next.save(this)
+        watchError = folderProblem(next)
+    }
+
+    private fun folderProblem(s: WatchSettings): String? {
+        val w = s.watchUri ?: return null
+        val b = s.backupUri ?: return null
+        return when {
+            Saf.isSameOrInside(w, b) -> "백업 폴더가 감시 폴더 안에 있어요. 감시 폴더 밖의 폴더를 골라 주세요."
+            Saf.isSameOrInside(b, w) -> "감시 폴더가 백업 폴더 안에 있어요. 서로 다른 폴더를 골라 주세요."
+            else -> null
+        }
+    }
+
+    private fun startWatch(force: Boolean = false) {
+        val s = watchSettings
+        if (!s.ready) return
+        folderProblem(s)?.let { watchError = it; return }
+        watchError = null
+        if (!force && Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            askNotify.launch(Manifest.permission.POST_NOTIFICATIONS); return
+        }
+        runCatching { WatchService.start(this) }.onFailure { watchError = "감시를 시작하지 못했어요: ${it.message}" }
     }
 
     private fun openCamera() {
@@ -112,25 +190,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** 긴 변 1600px 근처로 줄여 읽고, 카메라 사진의 회전(EXIF)을 바로잡는다. */
-    private fun decode(uri: Uri): Bitmap {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, bounds) }
-        var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 1600) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
-        val bmp = contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, opts)!! }
-        val rotation = contentResolver.openInputStream(uri)!!.use {
-            when (ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> 90f
-                ExifInterface.ORIENTATION_ROTATE_180 -> 180f
-                ExifInterface.ORIENTATION_ROTATE_270 -> 270f
-                else -> 0f
-            }
-        }
-        if (rotation == 0f) return bmp
-        return Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(rotation) }, true)
-    }
+    private fun decode(uri: Uri): Bitmap = decodeForEngine(contentResolver, uri)
 
     /** 결과 사진을 갤러리(사진/PlateEngine 폴더)에 저장. */
     private fun save(bitmap: Bitmap) {
@@ -181,6 +241,10 @@ class MainActivity : ComponentActivity() {
             }
             startActivity(Intent.createChooser(send, "학습용 사진 내보내기"))
         }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_WATCH = "open_watch"
     }
 
     override fun onDestroy() {
