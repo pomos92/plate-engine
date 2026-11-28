@@ -12,8 +12,8 @@ android {
         applicationId = "com.plateengine.sample"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.3"
         // 대부분의 실제 폰(64비트 ARM)만 포함해서 APK 크기를 줄임. 에뮬레이터(x86_64)에서 돌리려면 "x86_64" 추가
         ndk { abiFilters += listOf("arm64-v8a") }
     }
